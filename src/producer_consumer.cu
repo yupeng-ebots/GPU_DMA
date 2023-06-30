@@ -4,11 +4,21 @@
 #include <chrono>
 #include <cuda.h>
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp>
+
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 20
-#define READ_FREQ 1
+#define WRITE_FREQ 1
+#define READ_FREQ 0
 #define DATA_SIZE 874*BLOCK_SIZE
+
+#define WIDTH 1944
+#define HEIGHT 1472
+#define NUM_FRAME 20
+
 
 std::atomic<size_t> write_ptr(0);
 std::atomic<size_t> read_ptr(0);
@@ -53,6 +63,13 @@ void Consumer() {
     }
 }
 
+char* LoadImage(std::string image_folder) {
+  int width = WIDTH;
+  int height = HEIGHT;
+  int num_frame = NUM_FRAME;
+
+
+}
 int main() {
     char* cpu_data = new char[DATA_SIZE];
     for (int i = 0; i < DATA_SIZE; ++i) {
@@ -81,8 +98,11 @@ int main() {
     for (int i = 0; i < DATA_SIZE; ++i) {
         if (cpu_data_mem_head[i] != cpu_data[i]) {
             printf("cpu_data_mem_head[%d]: %p  %d %d\n", i, cpu_data_mem_head+i, *(cpu_data_mem_head+i), *(cpu_data+i));    
+            break;
         }   
     }
+    std::cout << "Data transfer is correct" << std::endl;
+    
 
     // Deallocate memory
     delete[] cpu_data;

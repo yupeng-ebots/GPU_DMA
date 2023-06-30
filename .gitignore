@@ -3,3 +3,5 @@ bin/
 
 # Ignore files in the log folder
 log/
+images/
+
