@@ -10,10 +10,12 @@
 #include <opencv2/highgui.hpp>
 
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
+// constexpr size_t BLOCK_SIZE = 10;
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 100
+#define WRITE_FREQ 10
 #define READ_FREQ 0
 #define DATA_SIZE 1747*BLOCK_SIZE
+// #define DATA_SIZE 7*BLOCK_SIZE
 
 #define WIDTH 1944
 #define HEIGHT 1472
@@ -32,10 +34,21 @@ char* cpu_data_mem;
 std::atomic <bool> producer_running(false);
 std::atomic <bool> consumer_running(false);
 
+__global__ void printAddress(char* variable) {
+    printf("Variable address on GPU: %p\n", variable);
+    for (int i = 0; i < 10; ++i) {
+        printf("    Value at address %p: %d\n", variable + i, *(variable + i));
+    }
+}
+
 void Producer() {
     while(producer_running) {
         if ((write_ptr + 1) % BUFFER_SIZE != read_ptr.load(std::memory_order_acquire)) {
-            cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToHost);
+            // cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToHost);
+            // make a void* pointer = &ring_buffer[write_ptr * BLOCK_SIZE]
+            
+            cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToDevice);
+            // printAddress<<<1, 1>>>(&ring_buffer[write_ptr * BLOCK_SIZE]);
             cudaDeviceSynchronize();
             if (gpu_data_mem == gpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
                 producer_running = false;
@@ -43,8 +56,8 @@ void Producer() {
                 gpu_data_mem += BLOCK_SIZE;
             }
             write_ptr.store((write_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
-            std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
+            std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
+            // std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
         }
     }
 }
@@ -52,15 +65,17 @@ void Producer() {
 void Consumer() {
     while(consumer_running) {
         if (read_ptr.load(std::memory_order_acquire) != write_ptr) {
-            memcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE);
+            
+            // memcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE);
+            cudaMemcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE, cudaMemcpyDeviceToHost);
             if (cpu_data_mem == cpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
                 consumer_running = false;
             } else {
                 cpu_data_mem = cpu_data_mem + BLOCK_SIZE;
             }
             read_ptr.store((read_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
-            std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
+            std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
+            // std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
         }
     }
 }
@@ -91,6 +106,7 @@ bool LoadImage(std::string image_folder, char* data_dst) {
     }
     return true;
 }
+
 int main(int argc, char** argv) {
     if (argc != 3) {
         std::cout << "Usage: ./ring_buffer_test <number_test> <image_folder>" << std::endl;
@@ -98,11 +114,15 @@ int main(int argc, char** argv) {
     }
     int number_test = atoi(argv[1]);
     std::string image_folder = argv[2];
-
+    cudaMalloc((void**)&ring_buffer, BUFFER_SIZE * BLOCK_SIZE * sizeof(char));
+    cudaMalloc((void**)&gpu_data_mem_head, DATA_SIZE * sizeof(char));
     for (int test_idx = 0; test_idx < number_test; ++test_idx) {
         // std::cout << "Test " << test_idx << std::endl;
         char* cpu_data = new char[DATA_SIZE];
-        ring_buffer = new char[BUFFER_SIZE * BLOCK_SIZE];
+        // ring_buffer = new char[BUFFER_SIZE * BLOCK_SIZE];
+        
+        std::cout << "Init Ring Buffer ";
+        // printAddress<<<1, 1>>>(&ring_buffer[write_ptr * BLOCK_SIZE]);
         cpu_data_mem_head = new char[DATA_SIZE];
 
         for (int i = 0; i < DATA_SIZE; ++i) {
@@ -110,10 +130,10 @@ int main(int argc, char** argv) {
         }
 
         char* test_image_date = new char[WIDTH*HEIGHT*NUM_FRAME*sizeof(float)];
-        LoadImage(image_folder, cpu_data);
+        // LoadImage(image_folder, cpu_data);
 
 
-        cudaMalloc((void**)&gpu_data_mem_head, DATA_SIZE * sizeof(char));
+        
         // std::cout << "gpu_buffer size: " << DATA_SIZE * sizeof(char) << std::endl;
 
         cudaMemcpy(gpu_data_mem_head, cpu_data, DATA_SIZE, cudaMemcpyHostToDevice);
@@ -150,12 +170,12 @@ int main(int argc, char** argv) {
             cv::imwrite(img_path.c_str(), cv_img2);
         }
 
-        // Deallocate memory
         delete[] cpu_data;
         delete[] cpu_data_mem_head;
-        delete[] ring_buffer;
-        cudaFree(gpu_data_mem_head);
+        
     }
+    cudaFree(ring_buffer);
+    cudaFree(gpu_data_mem_head);
         
     
 
