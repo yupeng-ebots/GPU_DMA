@@ -1,0 +1,5 @@
+# Ignore files in the bin folder
+bin/
+
+# Ignore files in the log folder
+log/
