@@ -43,7 +43,6 @@ void Producer() {
                 gpu_data_mem += BLOCK_SIZE;
             }
             write_ptr.store((write_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            // change sleep from milliseconds to microseconds
             // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
             std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
         }
@@ -93,8 +92,12 @@ bool LoadImage(std::string image_folder, char* data_dst) {
     return true;
 }
 int main(int argc, char** argv) {
-    // cast char* of argv[1] to int
+    if (argc != 3) {
+        std::cout << "Usage: ./ring_buffer_test <number_test> <image_folder>" << std::endl;
+        return -1;
+    }
     int number_test = atoi(argv[1]);
+    std::string image_folder = argv[2];
 
     for (int test_idx = 0; test_idx < number_test; ++test_idx) {
         // std::cout << "Test " << test_idx << std::endl;
@@ -107,7 +110,7 @@ int main(int argc, char** argv) {
         }
 
         char* test_image_date = new char[WIDTH*HEIGHT*NUM_FRAME*sizeof(float)];
-        LoadImage("/home/yhan/Desktop/GitFolder/GPU_DMA/images", cpu_data);
+        LoadImage(image_folder, cpu_data);
 
 
         cudaMalloc((void**)&gpu_data_mem_head, DATA_SIZE * sizeof(char));
@@ -143,7 +146,7 @@ int main(int argc, char** argv) {
             cv::Mat cv_img1 = cv::Mat(HEIGHT, WIDTH, CV_32FC1, cpu_data_float + img_idx * WIDTH * HEIGHT);
             cv::Mat cv_img2;
             cv_img1.convertTo(cv_img2, CV_16UC1, 4095.0f);
-            std::string img_path = "/home/yhan/Desktop/GitFolder/GPU_DMA/images/Frame" + std::to_string(img_idx) + "_out.tiff";
+            std::string img_path = image_folder + "/Frame" + std::to_string(img_idx) + "_out.tiff";
             cv::imwrite(img_path.c_str(), cv_img2);
         }
 
@@ -156,5 +159,5 @@ int main(int argc, char** argv) {
         
     
 
-    return 0;
+    return 0;    
 }
