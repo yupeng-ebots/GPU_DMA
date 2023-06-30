@@ -13,7 +13,7 @@ constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
 #define WRITE_FREQ 1
 #define READ_FREQ 0
-#define DATA_SIZE 874*BLOCK_SIZE
+#define DATA_SIZE 1747*BLOCK_SIZE
 
 #define WIDTH 1944
 #define HEIGHT 1472
@@ -63,18 +63,41 @@ void Consumer() {
     }
 }
 
-char* LoadImage(std::string image_folder) {
-  int width = WIDTH;
-  int height = HEIGHT;
-  int num_frame = NUM_FRAME;
-
-
+bool LoadImage(std::string image_folder, char* data_dst) {
+    int width = WIDTH;
+    int height = HEIGHT;
+    int num_frame = NUM_FRAME;
+    int data_size = width * height * num_frame;
+    printf("data_size: %lu\n", data_size*sizeof(float));
+    // cast data_dst to float
+    float* data_dst_float = reinterpret_cast<float*>(data_dst);
+    // load image
+    for (int img_idx = 0; img_idx < num_frame; ++img_idx) {
+        std::string img_path = image_folder + "/Frame" + std::to_string(img_idx) + ".tiff";
+        cv::Mat cv_img1 = cv::imread(img_path.c_str(), cv::IMREAD_ANYDEPTH);
+        cv::Mat cv_floatImg;
+        cv_img1.convertTo(cv_floatImg, CV_32FC1);
+        if (cv_img1.empty()) {
+            std::cout << "Could not read the image: " << img_path << std::endl;
+            return false;
+        }
+        for (int j = 0; j < height; ++j) {
+            for (int k = 0; k < width; ++k) {
+                data_dst_float[img_idx * width * height + j * width + k] = cv_floatImg.at<float>(j, k)/4095.0f;
+            }
+        }
+    }
+    return true;
 }
 int main() {
     char* cpu_data = new char[DATA_SIZE];
     for (int i = 0; i < DATA_SIZE; ++i) {
         cpu_data[i] = i%256;
     }
+
+    char* test_image_date = new char[WIDTH*HEIGHT*NUM_FRAME*sizeof(float)];
+    LoadImage("/home/yhan/Desktop/GitFolder/GPU_DMA/images", cpu_data);
+
 
     cudaMalloc((void**)&gpu_data_mem_head, DATA_SIZE * sizeof(char));
     std::cout << "gpu_buffer size: " << DATA_SIZE * sizeof(char) << std::endl;
@@ -98,11 +121,20 @@ int main() {
     for (int i = 0; i < DATA_SIZE; ++i) {
         if (cpu_data_mem_head[i] != cpu_data[i]) {
             printf("cpu_data_mem_head[%d]: %p  %d %d\n", i, cpu_data_mem_head+i, *(cpu_data_mem_head+i), *(cpu_data+i));    
-            break;
+            // break;
         }   
     }
     std::cout << "Data transfer is correct" << std::endl;
     
+    //convert cpu_data back to float and save as tiff image
+    float* cpu_data_float = reinterpret_cast<float*>(cpu_data);
+    for (int img_idx = 0; img_idx < NUM_FRAME; ++img_idx) {
+        cv::Mat cv_img1 = cv::Mat(HEIGHT, WIDTH, CV_32FC1, cpu_data_float + img_idx * WIDTH * HEIGHT);
+        cv::Mat cv_img2;
+        cv_img1.convertTo(cv_img2, CV_16UC1, 4095.0f);
+        std::string img_path = "/home/yhan/Desktop/GitFolder/GPU_DMA/images/Frame" + std::to_string(img_idx) + "_out.tiff";
+        cv::imwrite(img_path.c_str(), cv_img2);
+    }
 
     // Deallocate memory
     delete[] cpu_data;
