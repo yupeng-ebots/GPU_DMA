@@ -12,8 +12,8 @@
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 // constexpr size_t BLOCK_SIZE = 10;
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 10
-#define READ_FREQ 0
+#define WRITE_FREQ 100
+#define READ_FREQ 90
 #define DATA_SIZE 1747*BLOCK_SIZE
 // #define DATA_SIZE 7*BLOCK_SIZE
 
@@ -56,8 +56,8 @@ void Producer() {
                 gpu_data_mem += BLOCK_SIZE;
             }
             write_ptr.store((write_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
-            // std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
+            std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
         }
     }
 }
@@ -74,8 +74,8 @@ void Consumer() {
                 cpu_data_mem = cpu_data_mem + BLOCK_SIZE;
             }
             read_ptr.store((read_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
-            // std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
+            std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
         }
     }
 }
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
         }
 
         char* test_image_date = new char[WIDTH*HEIGHT*NUM_FRAME*sizeof(float)];
-        // LoadImage(image_folder, cpu_data);
+        LoadImage(image_folder, cpu_data);
 
 
         
