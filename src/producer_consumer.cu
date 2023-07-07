@@ -12,8 +12,8 @@
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 // constexpr size_t BLOCK_SIZE = 10;
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 100
-#define READ_FREQ 90
+#define WRITE_FREQ 97
+#define READ_FREQ 100
 #define DATA_SIZE 1747*BLOCK_SIZE
 // #define DATA_SIZE 7*BLOCK_SIZE
 
@@ -22,8 +22,12 @@ constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
 #define NUM_FRAME 20
 
 
-std::atomic<size_t> write_ptr(0);
-std::atomic<size_t> read_ptr(0);
+// std::atomic<size_t> write_ptr(0);
+
+// std::atomic<size_t> read_ptr(0);
+
+int write_ptr = 0;
+int read_ptr = 0;
 
 char* ring_buffer;
 char* gpu_data_mem_head;
@@ -43,37 +47,34 @@ __global__ void printAddress(char* variable) {
 
 void Producer() {
     while(producer_running) {
-        if ((write_ptr + 1) % BUFFER_SIZE != read_ptr.load(std::memory_order_acquire)) {
-            // cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToHost);
-            // make a void* pointer = &ring_buffer[write_ptr * BLOCK_SIZE]
-            
-            cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToDevice);
-            // printAddress<<<1, 1>>>(&ring_buffer[write_ptr * BLOCK_SIZE]);
-            cudaDeviceSynchronize();
-            if (gpu_data_mem == gpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
-                producer_running = false;
-            } else {
-                gpu_data_mem += BLOCK_SIZE;
-            }
-            write_ptr.store((write_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
-            std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
+        // cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToHost);
+        // make a void* pointer = &ring_buffer[write_ptr * BLOCK_SIZE]
+        
+        cudaMemcpy(&ring_buffer[(write_ptr%BUFFER_SIZE) * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToDevice);
+        // printAddress<<<1, 1>>>(&ring_buffer[write_ptr * BLOCK_SIZE]);
+        cudaDeviceSynchronize();
+        if (gpu_data_mem == gpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
+            producer_running = false;
+        } else {
+            gpu_data_mem += BLOCK_SIZE;
         }
+        write_ptr++;
+        // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
+        std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
     }
 }
 
 void Consumer() {
     while(consumer_running) {
-        if (read_ptr.load(std::memory_order_acquire) != write_ptr) {
-            
+        if (read_ptr < write_ptr) {
             // memcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE);
-            cudaMemcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE, cudaMemcpyDeviceToHost);
+            cudaMemcpy(cpu_data_mem, &ring_buffer[(read_ptr%BUFFER_SIZE) * BLOCK_SIZE], BLOCK_SIZE, cudaMemcpyDeviceToHost);
             if (cpu_data_mem == cpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
                 consumer_running = false;
             } else {
                 cpu_data_mem = cpu_data_mem + BLOCK_SIZE;
             }
-            read_ptr.store((read_ptr + 1) % BUFFER_SIZE, std::memory_order_release);
+            read_ptr++;
             // std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
             std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
         }
@@ -84,7 +85,7 @@ bool LoadImage(std::string image_folder, char* data_dst) {
     int width = WIDTH;
     int height = HEIGHT;
     int num_frame = NUM_FRAME;
-    int data_size = width * height * num_frame;
+    // int data_size = width * height * num_frame;
     // printf("data_size: %lu\n", data_size*sizeof(float));
     // cast data_dst to float
     float* data_dst_float = reinterpret_cast<float*>(data_dst);
@@ -151,22 +152,27 @@ int main(int argc, char** argv) {
 
         cudaDeviceSynchronize();
         // std::cout << "Data transfer is done" << std::endl;
-
+        bool is_correct = true;
         for (int i = 0; i < DATA_SIZE; ++i) {
             if (cpu_data_mem_head[i] != cpu_data[i]) {
-                printf("Test: %d cpu_data_mem_head[%d]: %p  %d %d\n", test_idx, i, cpu_data_mem_head+i, *(cpu_data_mem_head+i), *(cpu_data+i));    
-                // break;
-            }   
+                // printf("Test: %d cpu_data_mem_head[%d]: %p  %d %d\n", test_idx, i, cpu_data_mem_head+i, *(cpu_data_mem_head+i), *(cpu_data+i));    
+                is_correct = false;
+            }
         }
-        std::cout << "Test " << test_idx << " Data transfer is correct" << std::endl;
+        if (!is_correct) {
+            std::cout << "Test " << test_idx << " Data transfer is wrong" << std::endl;
+        } else {
+            std::cout << "Test " << test_idx << " Data transfer is correct" << std::endl;
+        }
+        
         
         //convert cpu_data back to float and save as tiff image
-        float* cpu_data_float = reinterpret_cast<float*>(cpu_data);
+        float* cpu_data_float = reinterpret_cast<float*>(cpu_data_mem_head);
         for (int img_idx = 0; img_idx < NUM_FRAME; ++img_idx) {
             cv::Mat cv_img1 = cv::Mat(HEIGHT, WIDTH, CV_32FC1, cpu_data_float + img_idx * WIDTH * HEIGHT);
             cv::Mat cv_img2;
             cv_img1.convertTo(cv_img2, CV_16UC1, 4095.0f);
-            std::string img_path = image_folder + "/Frame" + std::to_string(img_idx) + "_out.tiff";
+            std::string img_path = image_folder + "/out_Frame" + std::to_string(img_idx) + ".tiff";
             cv::imwrite(img_path.c_str(), cv_img2);
         }
 
