@@ -12,7 +12,7 @@
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 // constexpr size_t BLOCK_SIZE = 10;
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 97
+#define WRITE_FREQ 90
 #define READ_FREQ 100
 #define DATA_SIZE 1747*BLOCK_SIZE
 // #define DATA_SIZE 7*BLOCK_SIZE
@@ -147,8 +147,8 @@ int main(int argc, char** argv) {
         std::thread producer(Producer);
         std::thread consumer(Consumer);
 
-        producer.join();
         consumer.join();
+        producer.join();
 
         cudaDeviceSynchronize();
         // std::cout << "Data transfer is done" << std::endl;
