@@ -2,6 +2,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <iomanip>
 #include <cuda.h>
 
 #include <opencv2/opencv.hpp>
@@ -12,8 +13,8 @@
 constexpr size_t BLOCK_SIZE = 128*1024; // 128KB
 // constexpr size_t BLOCK_SIZE = 10;
 constexpr size_t BUFFER_SIZE = 4; // 4 times of BLOCK_SIZE
-#define WRITE_FREQ 90
-#define READ_FREQ 100
+#define WRITE_FREQ 0
+#define READ_FREQ 0
 #define DATA_SIZE 1747*BLOCK_SIZE
 // #define DATA_SIZE 7*BLOCK_SIZE
 
@@ -49,10 +50,25 @@ void Producer() {
     while(producer_running) {
         // cudaMemcpy(&ring_buffer[write_ptr * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToHost);
         // make a void* pointer = &ring_buffer[write_ptr * BLOCK_SIZE]
-        
+        // float time;
+        // cudaEvent_t start, stop;
+        // cudaEventCreate(&start);
+        // cudaEventCreate(&stop);
+        // cudaEventRecord(start, 0);
+        std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::nanoseconds> tp = std::chrono::high_resolution_clock::now();
+        auto duration = tp.time_since_epoch();
+        // std::cout << "P begin: " << duration.count() << "ns\n";
         cudaMemcpy(&ring_buffer[(write_ptr%BUFFER_SIZE) * BLOCK_SIZE], gpu_data_mem, BLOCK_SIZE, cudaMemcpyDeviceToDevice);
-        // printAddress<<<1, 1>>>(&ring_buffer[write_ptr * BLOCK_SIZE]);
         cudaDeviceSynchronize();
+        tp = std::chrono::high_resolution_clock::now();
+        duration = tp.time_since_epoch();
+        std::cout << "P end: " << duration.count() << "ns\n";
+        
+        // std::cout << "P end: " << std::chrono::system_clock::now() << "\n";
+        // cudaEventRecord(stop, 0);
+        // cudaEventSynchronize(stop);
+        // cudaEventElapsedTime(&time, start, stop);
+        // std::cout << "Producer time: " << time << " ms\n";
         if (gpu_data_mem == gpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
             producer_running = false;
         } else {
@@ -60,7 +76,7 @@ void Producer() {
         }
         write_ptr++;
         // std::this_thread::sleep_for(std::chrono::milliseconds(WRITE_FREQ));
-        std::this_thread::sleep_for(std::chrono::microseconds(WRITE_FREQ));
+        std::this_thread::sleep_for(std::chrono::nanoseconds(WRITE_FREQ));
     }
 }
 
@@ -68,7 +84,27 @@ void Consumer() {
     while(consumer_running) {
         if (read_ptr < write_ptr) {
             // memcpy(cpu_data_mem, &ring_buffer[read_ptr * BLOCK_SIZE], BLOCK_SIZE);
+            // float time;
+            // cudaEvent_t start, stop;
+            // cudaEventCreate(&start);
+            // cudaEventCreate(&stop);
+            // cudaEventRecord(start, 0);
+            // std::cout << "C begin: " << std::chrono::system_clock::now() << "\n";
+            std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::nanoseconds> tp = std::chrono::high_resolution_clock::now();
+            auto duration = tp.time_since_epoch();
+            // std::cout << "C begin: " << duration.count() << "ns\n";
             cudaMemcpy(cpu_data_mem, &ring_buffer[(read_ptr%BUFFER_SIZE) * BLOCK_SIZE], BLOCK_SIZE, cudaMemcpyDeviceToHost);
+            cudaDeviceSynchronize();
+            tp = std::chrono::high_resolution_clock::now();
+            duration = tp.time_since_epoch();
+            std::cout << "C end: " << duration.count() << "ns\n";
+            // std::cout << "C begin: " << begin << " end: " << end << "\n\n";
+            // std::cout << "C end: " << std::chrono::system_clock::now() << "\n";
+
+            // cudaEventRecord(stop, 0);
+            // cudaEventSynchronize(stop);
+            // cudaEventElapsedTime(&time, start, stop);
+            // std::cout << "Consumer time: " << time << " ms\n";
             if (cpu_data_mem == cpu_data_mem_head + DATA_SIZE - BLOCK_SIZE) {
                 consumer_running = false;
             } else {
@@ -76,7 +112,7 @@ void Consumer() {
             }
             read_ptr++;
             // std::this_thread::sleep_for(std::chrono::milliseconds(READ_FREQ));
-            std::this_thread::sleep_for(std::chrono::microseconds(READ_FREQ));
+            std::this_thread::sleep_for(std::chrono::nanoseconds(READ_FREQ));
         }
     }
 }
